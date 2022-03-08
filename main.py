@@ -1,3 +1,4 @@
 import Aurras as aurras
 
-aurras.preprocess_intent_dataset()
+model = aurras.Model(10)
+model.build_model()
