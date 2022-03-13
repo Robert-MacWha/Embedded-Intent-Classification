@@ -1,4 +1,6 @@
-import Aurras as aurras
+from Aurras import Aurras
 
-model = aurras.Model(10)
-model.build_model()
+aurras = Aurras()
+aurras.load_data_from_file()
+aurras.train()
+aurras.save()

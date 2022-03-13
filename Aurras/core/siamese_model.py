@@ -1,5 +1,4 @@
 import tensorflow as tf
-from transformers import MarianConfig
 
 class SiameseModel(tf.keras.Model):
     """
@@ -17,7 +16,7 @@ class SiameseModel(tf.keras.Model):
         super(SiameseModel, self).__init__()    
         self.siamese_network = siamese_network
         self.margin = margin
-        self.loss_tracker = tf.kerasmetrics.Mean(name="loss")
+        self.loss_tracker = tf.keras.metrics.Mean(name="loss")
 
     def call(self, inputs):
         return self.siamese_network(inputs)

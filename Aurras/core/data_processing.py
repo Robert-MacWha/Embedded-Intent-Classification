@@ -1,10 +1,10 @@
 import glob
 import json
 import random
-import re
+import numpy as np
 from pathlib import Path
 
-def preprocess_intent_dataset(samples_per_intent: int=5, data_path: str='dataset'):
+def preprocess_intent_dataset(samples_per_intent: int, data_path: str):
 	"""
 		Generate a dataset for the triplet intent classification model
 
@@ -30,13 +30,17 @@ def preprocess_intent_dataset(samples_per_intent: int=5, data_path: str='dataset
 		entities[name] = samples
 
 	#* generate all permutations
+	ATTEMPTS_BEFORE_FAIL = 50
+
 	permuted_intents = {}
 	for key in raw_intents:
 		intent_templates = raw_intents[key]
 
 		# generate x permutations for each intent category
 		permuted_intents[key] = []
-		while len(permuted_intents[key]) < samples_per_intent:
+
+		fails = 0
+		while len(permuted_intents[key]) < samples_per_intent and fails < ATTEMPTS_BEFORE_FAIL:
 			intent = random.choice(intent_templates)
 
 			# fill the intent's entity slots
@@ -53,8 +57,74 @@ def preprocess_intent_dataset(samples_per_intent: int=5, data_path: str='dataset
 			# re-convert the intent into a single string, clean them up a little, & add it to the dataset
 			intent = " ".join(intent)
 			intent = intent.lstrip().rstrip()
-			permuted_intents[key].append(intent)
 
-	with open(f'{data_path}/dataset.json', 'w') as f:
-		
-		json.dump(permuted_intents, f)
+			if not intent in permuted_intents[key]:
+				permuted_intents[key].append(intent)
+				fails = 0
+			else:
+				fails += 1
+
+	# debugging info on how many permutations were generated
+	print(f"The following intents were not able to generate {samples_per_intent} samples:")
+	for key in permuted_intents:
+		if len(permuted_intents[key]) < samples_per_intent:
+			print(f" - {key}: {len(permuted_intents[key])}")
+
+	return permuted_intents
+
+def process_triplets(raw_sorted_data: json):
+	""" Convert raw json data into batches of triplets """
+
+	raw_data = []
+	for key in raw_sorted_data:
+		for v in raw_sorted_data[key]:
+			raw_data.append(v)
+
+	samples = []
+
+	for key in raw_sorted_data:
+
+		key_samples = raw_sorted_data[key]
+
+		# for each anchor prompt choose a random prompt from the same key as the anchor and a random prompt from the entire set as the different key
+		for i in range(len(key_samples)):
+			
+			anchor = key_samples[i]
+			
+			positive_id = random.randint(0, len(key_samples) - 1)
+			positive = key_samples[positive_id]
+
+			negative_id = random.randint(0, len(raw_data) - 1)
+			negative = raw_data[negative_id]
+
+			samples.append((anchor, positive, negative))
+
+	return samples
+
+def tokenize_intent_dataset(triplet_data: list, tokenizer: object, padding: int):
+	"""
+		Tokenizes the triplet text data & return it
+	"""
+
+	tokenized_data = []
+
+	for sample in triplet_data:
+
+		raw_tokenized_sample = tokenizer(
+			[sample[0], sample[1], sample[2]],
+			max_length=padding,
+			padding='max_length',
+			truncation=True,
+			return_attention_mask=True,
+			return_token_type_ids=False,
+			return_tensors='np'
+		)
+
+		tokenized_sample = (
+			raw_tokenized_sample['input_ids'][0], raw_tokenized_sample['attention_mask'][0], 
+			raw_tokenized_sample['input_ids'][1], raw_tokenized_sample['attention_mask'][1], 
+			raw_tokenized_sample['input_ids'][2], raw_tokenized_sample['attention_mask'][2])
+
+		tokenized_data.append(tokenized_sample)
+
+	return np.array(tokenized_data)

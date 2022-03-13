@@ -6,65 +6,38 @@ from .siamese_model import SiameseModel
 
 class Model:
 
-    def __init__(self, padding: int, embedding_dimensions: int=32, plot_models: bool=False):
+    def __init__(self, padding: int, embedding_dimensions: int, plot_model: bool):
         self.padding = padding
         self.embedding_dim = embedding_dimensions
-        self.plot = plot_models
+        self.plot = plot_model
 
     def build(self):
-        """
-            Build a new model & prepare it for training / predictions
-        """
+        """ Build a new model & prepare it for training / predictions """
         
         self.embedding_model = self.__build_embedding_model()
-        siamese_network = self.__build_siamese_network(self.embedding)
+        siamese_network = self.__build_siamese_network(self.embedding_model)
         self.siamese_model = SiameseModel(siamese_network)
 
-        self.siamese_model.compile(optimize=tf.keras.optimizers.Adam())
+        self.siamese_model.compile(optimizer=tf.keras.optimizers.Adam())
+
+    def save(self, path: str):
+        self.embedding_model.save_weights(f"{path}/embedding_model")
 
     def load(self, path: str):
-        """
-            Load in a pre-trained model & prepare it for training / predictions
-
-            Input:
-             - path: Path to pre-trained model
-        """
+        """ Load in a pre-trained model & prepare it for training / predictions """
         pass
 
-    def fit(self, data, epochs: int=1, batch_size: int=16, verbose: int=0):
-        """
-            Train the model
-
-            Inputs:
-             - data: Data in triplet loss format
-             - verbose: 0, 1, or 2
-        """
-        self.siamese_model.fit(data, epochs=epochs, batch_size=batch_size, verbose=verbose)
+    def fit(self, data: list, epochs: int, batch_size: int, verbose: int):
+        """ Train the model """
+        self.siamese_model.fit(data, epochs=epochs, batch_size=batch_size, validation_split=0.05, verbose=verbose)
 
     def get_embedding(self, input_ids, input_attention):
-        """
-            embeddes a tokenized string
-
-            Inputs:
-             - input_ids: tokenized list of IDs
-             - input_attention: attention mask for input_ids
-            
-            Outputs:
-             - embedding: numpy embedding array
-        """
+        """ Embed a tokenized string """
 
         return self.embedding_model(input_ids, input_attention).numpy()
 
     def get_similarity(self, i1: tuple, i2: tuple):
-        """
-            Returns the cosine similarity of two tokenized strings
-
-            Inputs:
-             - i1/i2: Tuple containing the input IDs and attention mask for either input
-            
-            Outputs:
-             - similarity: single integer cosine similarity
-        """
+        """ Return the cosine similarity of two tokenized strings """
 
         i1_embedding, i2_embedding = (self.embedding_model(i1[0], i1[1]), self.embedding_model(i2[0], i2[1]))
         return tf.keras.metrics.CosineSimilarity(i1_embedding, i2_embedding).numpy()
@@ -105,7 +78,7 @@ class Model:
             name='embedding'
         )(x)
 
-        embedding = tf.keras.models.Model([input_ids_layer, input_attention_layer], embedded_output)
+        embedding = tf.keras.models.Model([input_ids_layer, input_attention_layer], embedded_output)    
 
         for layer in embedding.layers[:3]:
             layer.trainable = False
@@ -118,28 +91,30 @@ class Model:
     def __build_siamese_network(self, embedding_model):
         
         #* input
-        anchor_ids_layer       = tf.keras.layers.Input(shape=(self.padding), name='anchor_ids',       dtype='int32')
-        anchor_attention_layer = tf.keras.layers.Input(shape=(self.padding), name='anchor_attention', dtype='int32')
+        input = tf.keras.layers.Input(shape=(6, self.padding), name='input', dtype='int32')
 
-        positive_ids_layer       = tf.keras.layers.Input(shape=(self.padding), name='positive_ids',       dtype='int32')
-        positive_attention_layer = tf.keras.layers.Input(shape=(self.padding), name='positive_attention', dtype='int32')
+        anchor_ids_layer       = input[:,0,:]
+        anchor_attention_layer = input[:,1,:]
 
-        negative_ids_layer       = tf.keras.layers.Input(shape=(self.padding), name='negative_ids',       dtype='int32')
-        negative_attention_layer = tf.keras.layers.Input(shape=(self.padding), name='negative_attention', dtype='int32')
+        positive_ids_layer       = input[:,2,:]
+        positive_attention_layer = input[:,3,:]
+
+        negative_ids_layer       = input[:,4,:]
+        negative_attention_layer = input[:,5,:]
 
         #* output
         distances = DistanceLayer()(
-            embedding_model([anchor_ids_layer, anchor_attention_layer]),
-            embedding_model([positive_ids_layer, positive_attention_layer]),
-            embedding_model([negative_ids_layer, negative_attention_layer])
+            embedding_model([anchor_ids_layer, anchor_attention_layer]),     # anchor
+            embedding_model([positive_ids_layer, positive_attention_layer]), # positive
+            embedding_model([negative_ids_layer, negative_attention_layer])  # negative
         )
 
         siamese_network = tf.keras.models.Model(
-            [anchor_ids_layer, anchor_attention_layer, positive_ids_layer, positive_attention_layer, negative_ids_layer, negative_attention_layer],
+            input,
             distances
         )
 
         if self.plot:
-            tf.keras.utils.plot_model(self.siamese_model, to_file='siamese.png', show_shapes=True, show_layer_names=True)
+            tf.keras.utils.plot_model(siamese_network, to_file='siamese.png', show_shapes=True, expand_nested=True, show_layer_names=True)
 
         return siamese_network

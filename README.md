@@ -1,0 +1,1 @@
+Run using tensorman run --gpu python ./main.py
