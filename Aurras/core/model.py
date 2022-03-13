@@ -25,22 +25,31 @@ class Model:
 
     def load(self, path: str):
         """ Load in a pre-trained model & prepare it for training / predictions """
-        pass
+        
+        self.embedding_model = self.__build_embedding_model()
+        self.embedding_model.load_weights(f"{path}/embedding_model")
 
+        siamese_network = self.__build_siamese_network(self.embedding_model)
+        self.siamese_model = SiameseModel(siamese_network)
+
+        self.siamese_model.compile(optimizer=tf.keras.optimizers.Adam())
+    
     def fit(self, data: list, epochs: int, batch_size: int, verbose: int):
         """ Train the model """
         self.siamese_model.fit(data, epochs=epochs, batch_size=batch_size, validation_split=0.05, verbose=verbose)
 
-    def get_embedding(self, input_ids, input_attention):
+    def get_embedding(self, ids, attention):
         """ Embed a tokenized string """
 
-        return self.embedding_model(input_ids, input_attention).numpy()
+        return self.embedding_model([ids, attention]).numpy()[0]
 
-    def get_similarity(self, i1: tuple, i2: tuple):
+    def get_similarity(self, ids_1, attention_1, ids_2, attention_2):
         """ Return the cosine similarity of two tokenized strings """
 
-        i1_embedding, i2_embedding = (self.embedding_model(i1[0], i1[1]), self.embedding_model(i2[0], i2[1]))
-        return tf.keras.metrics.CosineSimilarity(i1_embedding, i2_embedding).numpy()
+        i1_embedding, i2_embedding = (self.embedding_model([ids_1, attention_1]), self.embedding_model([ids_2, attention_2]))
+
+        cosine_similarity = tf.keras.metrics.CosineSimilarity()
+        return cosine_similarity(i1_embedding, i2_embedding).numpy()
 
     def __build_embedding_model(self):
 
