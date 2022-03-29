@@ -40,7 +40,6 @@ class Model:
 
     def get_embedding(self, ids, attention):
         """ Embed a tokenized string """
-
         return self.embedding_model([ids, attention]).numpy()[0]
 
     def get_similarity(self, ids_1, attention_1, ids_2, attention_2):

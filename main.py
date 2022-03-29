@@ -3,10 +3,10 @@ from Aurras import Aurras
 aurras = Aurras()
 aurras.load()
 
-print("Positive Similarity, known")
+print("\nPositive Similarity, known")
 aurras.get_intent("What do I have to do today?", "What reminders do I have?")
 
-print("vNegative Similarity, known")
+print("\nNegative Similarity, known")
 aurras.get_intent("What do I have to do today?", "Play some Jazz")
 
 print("\nPositive Similarity, unknown")

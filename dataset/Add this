@@ -1,1 +1,7 @@
-get_uber
+Intents:
+ - get_uber
+ - open_game
+ - get_recipe
+ - order_drink
+ - book_flight
+ - 
