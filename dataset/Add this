@@ -1,7 +1,9 @@
 Intents:
  - get_uber
  - open_game
+ - open_program
  - get_recipe
  - order_drink
  - book_flight
- - 
+ - get_movie_info
+ - play_movie

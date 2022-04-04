@@ -1,5 +1,8 @@
 from transformers import DistilBertTokenizerFast
+import tensorflow as tf
 import numpy as np
+import time
+import json
 import os
 
 from .config import Config as config
@@ -11,6 +14,100 @@ class Aurras():
         print('Initializing Aurras')
 
         self.tokenizer = DistilBertTokenizerFast.from_pretrained(config.MODEL_VARIANT)
+        self.intent_dict = {}
+        self.model = None
+
+    """ Interactions """
+    def add_intent(self, samples: list, name: str = None):
+        """
+            Adds a new intent to Aurras's memory
+            
+            Inputs:
+             - samples: list of strings coresponding to the intent
+             - name (optional): name for this intent
+        """
+
+        if name == None:
+            name = f"__{round(time.time())}__"
+
+            if name in self.intent_dict:
+                print("ERROR: failed to add intent.  Intent already exists")
+
+        if self.model == None:
+            print("ERROR: Failed to add intent.  An embedding model must first be loaded")
+            return -1
+
+        # calculate the embedding for each intent & take the average
+        embeddings = []
+        for s in samples:
+            (ids, attention) = self.__tokenize(s)
+            e = self.model.get_embedding(ids, attention)
+            embeddings.append(e)
+
+        avg = np.mean(np.array(embeddings), axis=0)
+        
+        # add the intent
+        intent = {
+            'embedding': avg.tolist(),
+            'samples': samples,
+        }
+
+        self.intent_dict[name] = intent
+
+    def add_sample_to_intent(self, sample: str, intent_name: str):
+        """
+            Add a sample to an intent
+
+            Inputs:
+             - sample: string sample
+             - intent_name: name of the intent
+        """
+
+        if not intent_name in self.intent_dict:
+            print('ERROR: An intent with that name does not net exist')
+            return -1
+
+        # calculate sample embedding & update average based on weight of new sample
+        (ids, attention) = self.__tokenize(sample)
+        sample_e = self.model.get_embedding(ids, attention)
+        
+        intent = self.intent_dict[intent_name]
+        sample_count = len(intent['samples'])
+
+        e_weight = (1 / (sample_count + 1))
+        s_weight = (1 - e_weight)
+
+        # multiply each element by that list's weight
+        e_weighted = [e * e_weight for e in sample_e]
+        s_weighted = [s * s_weight for s in intent['embedding']]
+
+        # sum of the two lists & save that
+        embedding = [sum(v) for v in zip(e_weighted, s_weighted)]
+        self.intent_dict[intent_name]['embedding'] = embedding
+        self.intent_dict[intent_name]['samples'].append(sample)
+
+    """ Training process """
+    def save(self):
+        """ Save aurras """
+        print('Saving Aurras')
+        
+        self.model.save(config.MODEL_PATH)
+        json.dump(self.intent_dict, open(config.INTENTS_PATH, 'w+'))
+
+    def load(self):
+        """ Load aurras from file """
+        print('Loading pre-trained weights')
+
+        try:
+            self.model = model.Model(padding=config.TOKENIZED_PADDING, embedding_dimensions=config.EMBEDDING_DIM, plot_model=True)
+            self.model.load(config.MODEL_PATH)
+        except:
+            print("ERROR: Failed to load pre-trained model")
+
+        try:
+            self.intent_dict = json.load(open(config.INTENTS_PATH))
+        except:
+            print("ERROR: Failed to load intents dict")
 
     def train(self):
         """ Train a model on a loaded dataset """
@@ -21,49 +118,31 @@ class Aurras():
 
         self.model.fit(self.dataset, config.EPOCHS, config.BATCH_SIZE, 1)
 
-    def save(self):
-        """ Save a model's weights to file """
-        print('Saving Aurrass')
-
-        self.model.save(config.MODEL_PATH)
-
-    def load(self):
-        """ Load a model from file """
-        print('Loading pre-trained weights')
-
-        self.model = model.Model(padding=config.TOKENIZED_PADDING, embedding_dimensions=config.EMBEDDING_DIM, plot_model=True)
-
-        self.model.load(config.MODEL_PATH)
-
-    def get_intent(self, prompt, prompt2):
+    """ Data management """
+    def get_intent(self, prompt):
         """ Determin the intent for a given prompt """
         print('Predicting an intent')
 
-        tokenized1 = self.tokenizer(
-			prompt,
-			max_length=config.TOKENIZED_PADDING,
-			padding='max_length',
-			truncation=True,
-			return_attention_mask=True,
-			return_token_type_ids=False,
-			return_tensors='np'
-		)
+        (ids, attention) = self.__tokenize(prompt)
+        embedding = self.model.get_embedding(ids, attention)
 
-        tokenized2 = self.tokenizer(
-			prompt2,
-			max_length=config.TOKENIZED_PADDING,
-			padding='max_length',
-			truncation=True,
-			return_attention_mask=True,
-			return_token_type_ids=False,
-			return_tensors='np'
-		)
+        max_similarity = config.MIN_INTENT_SIMILARITY
+        intent = None
+        for key, value in self.intent_dict.items():
 
-        similarity = self.model.get_similarity(tokenized1['input_ids'], tokenized1['attention_mask'], tokenized2['input_ids'], tokenized2['attention_mask'])
+            cosine_similarity = tf.keras.metrics.CosineSimilarity()
+            similarity = cosine_similarity(embedding, np.array(value['embedding'])).numpy()
 
-        print(f" - p1: {prompt}")
-        print(f" - p2: {prompt2}")
-        print(f" - similarity: {similarity}")
+            print(similarity)
+            if similarity > max_similarity:
+                max_similarity = similarity
+                intent = key
+        
+        if intent == None:
+            print("WARNING: No valid intent was found for this prompt")
+            return -1
+
+        return {"intent": intent, "Confidence": similarity}
 
     def generate_data_from_file(self):
         """ Generate a dataset from the raw provided data """
@@ -87,3 +166,16 @@ class Aurras():
             self.generate_data_from_file()
 
         print(self.dataset.shape)
+
+    def __tokenize(self, s: str):
+        tokenized =  self.tokenizer(
+			s,
+			max_length=config.TOKENIZED_PADDING,
+			padding='max_length',
+			truncation=True,
+			return_attention_mask=True,
+			return_token_type_ids=False,
+			return_tensors='np'
+		)
+
+        return (tokenized['input_ids'], tokenized['attention_mask'])

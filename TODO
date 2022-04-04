@@ -1,0 +1,7 @@
+Add more data to the intents and entities
+
+Implement an embedding-based entity extraction system
+
+Implement a basic chatbot system
+
+Build a model to predict entity and intent names based on the samples (IE bread, cake, brownies -> desert)
