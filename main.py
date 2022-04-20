@@ -9,6 +9,16 @@ aurras.add_intent([
     "Open visual studio code please"
 ], name="open_program")
 
-print(aurras.get_intent("start celeste"))
+aurras.add_intent([
+    "Play Garden of Memories by Seycare",
+    "Put on Imaginary expression by rush garcia",
+    "Play some jazz music"  
+], name="play_music")
+
+aurras.add_intent([
+    "What does my calendar look like for today",
+    "What do I have to do today",
+    "What's on my calendar"
+], name="get_calendar")
 
 aurras.save()
